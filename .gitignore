@@ -1,0 +1,22 @@
+# Файл с токеном (не загружайте в git!)
+.env
+
+# Файл с заданиями (можно загружать, но обычно не нужно)
+tasks.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
