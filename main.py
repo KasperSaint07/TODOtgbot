@@ -8,6 +8,29 @@ from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQu
 load_dotenv()
 
 DB_FILE = "tasks.db"
+DATE_FORMATS = ["%d.%m.%Y", "%d.%m.%y"]
+
+MAIN_MENU_TEXT = "Привет! Я бот для управления заданиями.\n\nВыберите действие:"
+HELP_TEXT = (
+    "Привет! Я бот для управления заданиями.\n\n"
+    "Доступные команды:\n"
+    "/start или /menu - Главное меню\n"
+    "/add_task - Добавить новое задание\n"
+    "/list_tasks - Показать все задания\n\n"
+    "Выберите действие:"
+)
+ADD_TASK_INSTRUCTIONS = (
+    "Чтобы добавить задание, отправьте сообщение в формате:\n\n"
+    "Задание: [описание задания]\n"
+    "Дедлайн: [дата: ДД.ММ.ГГГГ или ДД.ММ.ГГ]\n"
+    "Сотрудник: @username или имя\n\n"
+    "Пример:\n"
+    "Задание: Подготовить отчет\n"
+    "Дедлайн: 25.12.2024\n"
+    "Сотрудник: @ivan_petrov\n\n"
+    "Можно использовать короткий формат даты: 10.01.26\n"
+    "Можно упомянуть сотрудника через @username прямо в сообщении!"
+)
 
 def init_db():
     """Создает таблицу tasks, если она не существует"""
@@ -26,30 +49,33 @@ def init_db():
     conn.commit()
     conn.close()
 
-def load_tasks():
-    """Загружает все задания из базы данных"""
-    init_db()  # Убеждаемся, что таблица существует
+def _execute_db(query, params=None, fetch=False):
+    """Вспомогательная функция для выполнения запросов к БД"""
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    cursor.execute("SELECT id, task, deadline, employee, completed, created_at FROM tasks")
-    rows = cursor.fetchall()
+    if params:
+        cursor.execute(query, params)
+    else:
+        cursor.execute(query)
+    result = cursor.fetchall() if fetch else None
+    conn.commit()
     conn.close()
-    
-    tasks = []
-    for row in rows:
-        tasks.append({
-            "id": row[0],
-            "task": row[1],
-            "deadline": row[2],
-            "employee": row[3],
-            "completed": bool(row[4]),  # Конвертируем INTEGER в bool
-            "created_at": row[5]
-        })
-    return tasks
+    return result
+
+def load_tasks():
+    """Загружает все задания из базы данных"""
+    rows = _execute_db("SELECT id, task, deadline, employee, completed, created_at FROM tasks", fetch=True)
+    return [{
+        "id": row[0],
+        "task": row[1],
+        "deadline": row[2],
+        "employee": row[3],
+        "completed": bool(row[4]),
+        "created_at": row[5]
+    } for row in rows]
 
 def insert_task(task, deadline, employee, created_at):
     """Добавляет новое задание в базу данных"""
-    init_db()
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute("""
@@ -63,10 +89,6 @@ def insert_task(task, deadline, employee, created_at):
 
 def update_task(task_id, completed=None, task=None, deadline=None, employee=None):
     """Обновляет задание в базе данных"""
-    init_db()
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    
     updates = []
     params = []
     
@@ -86,45 +108,11 @@ def update_task(task_id, completed=None, task=None, deadline=None, employee=None
     if updates:
         params.append(task_id)
         query = f"UPDATE tasks SET {', '.join(updates)} WHERE id = ?"
-        cursor.execute(query, params)
-        conn.commit()
-    
-    conn.close()
+        _execute_db(query, params)
 
 def delete_task_by_id(task_id):
     """Удаляет задание из базы данных по ID"""
-    init_db()
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
-    conn.commit()
-    conn.close()
-
-def save_tasks(tasks):
-    """Совместимость: сохраняет список заданий (используется для полной перезаписи)"""
-    init_db()
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    
-    # Удаляем все существующие задачи
-    cursor.execute("DELETE FROM tasks")
-    
-    # Вставляем новые задачи
-    for task in tasks:
-        cursor.execute("""
-            INSERT INTO tasks (id, task, deadline, employee, completed, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (
-            task["id"],
-            task["task"],
-            task["deadline"],
-            task["employee"],
-            1 if task["completed"] else 0,
-            task["created_at"]
-        ))
-    
-    conn.commit()
-    conn.close()
+    _execute_db("DELETE FROM tasks WHERE id = ?", (task_id,))
 
 def normalize_username(username):
     """Нормализует username - добавляет @ если нужно"""
@@ -136,7 +124,7 @@ def normalize_username(username):
 
 def parse_date(date_str):
     """Парсит дату в формате ДД.ММ.ГГГГ или ДД.ММ.ГГ"""
-    for fmt in ["%d.%m.%Y", "%d.%m.%y"]:
+    for fmt in DATE_FORMATS:
         try:
             dt = datetime.strptime(date_str, fmt)
             return dt.strftime("%d.%m.%Y")
@@ -146,7 +134,7 @@ def parse_date(date_str):
 
 def deadline_to_datetime(deadline_str):
     """Конвертирует строку дедлайна в datetime для сортировки"""
-    for fmt in ["%d.%m.%Y", "%d.%m.%y"]:
+    for fmt in DATE_FORMATS:
         try:
             return datetime.strptime(deadline_str, fmt)
         except ValueError:
@@ -195,52 +183,47 @@ def get_list_filter_keyboard():
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message:
         return
-    keyboard = get_main_menu_keyboard()
-    await update.message.reply_text(
-        "Привет! Я бот для управления заданиями.\n\n"
-        "Выберите действие:",
-        reply_markup=keyboard
-    )
+    await update.message.reply_text(MAIN_MENU_TEXT, reply_markup=get_main_menu_keyboard())
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = get_main_menu_keyboard()
     if update.message:
-        await update.message.reply_text(
-            "Привет! Я бот для управления заданиями.\n\n"
-            "Доступные команды:\n"
-            "/start или /menu - Главное меню\n"
-            "/add_task - Добавить новое задание\n"
-            "/list_tasks - Показать все задания\n\n"
-            "Выберите действие:",
-            reply_markup=keyboard
-        )
+        await update.message.reply_text(HELP_TEXT, reply_markup=keyboard)
     elif update.callback_query:
-        await update.callback_query.edit_message_text(
-            "Привет! Я бот для управления заданиями.\n\n"
-            "Доступные команды:\n"
-            "/start или /menu - Главное меню\n"
-            "/add_task - Добавить новое задание\n"
-            "/list_tasks - Показать все задания\n\n"
-            "Выберите действие:",
-            reply_markup=keyboard
-        )
+        await update.callback_query.edit_message_text(HELP_TEXT, reply_markup=keyboard)
         await update.callback_query.answer()
 
 async def add_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message:
         return
-    await update.message.reply_text(
-        "Чтобы добавить задание, отправьте сообщение в формате:\n\n"
-        "Задание: [описание задания]\n"
-        "Дедлайн: [дата: ДД.ММ.ГГГГ или ДД.ММ.ГГ]\n"
-        "Сотрудник: @username или имя\n\n"
-        "Пример:\n"
-        "Задание: Подготовить отчет\n"
-        "Дедлайн: 25.12.2024\n"
-        "Сотрудник: @ivan_petrov\n\n"
-        "Можно использовать короткий формат даты: 10.01.26\n"
-        "Можно упомянуть сотрудника через @username прямо в сообщении!"
-    )
+    await update.message.reply_text(ADD_TASK_INSTRUCTIONS)
+
+def _parse_task_message(text, entities):
+    """Парсит сообщение с заданием и возвращает task_desc, deadline, employee"""
+    task_desc = ""
+    deadline = ""
+    employee = ""
+    
+    for line in text.split('\n'):
+        line = line.strip()
+        line_lower = line.lower()
+        if line_lower.startswith("задание:"):
+            task_desc = line[line.find(":") + 1:].strip()
+        elif line_lower.startswith("дедлайн:"):
+            deadline = line[line.find(":") + 1:].strip()
+        elif line_lower.startswith("сотрудник:"):
+            employee = line[line.find(":") + 1:].strip()
+    
+    if not employee and entities:
+        for entity in entities:
+            if entity.type == "mention":
+                employee = text[entity.offset:entity.offset + entity.length]
+                break
+            elif entity.type == "text_mention" and entity.user:
+                employee = f"@{entity.user.username}" if entity.user.username else entity.user.first_name
+                break
+    
+    return task_desc, deadline, employee
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
@@ -250,7 +233,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text.startswith("/add_task"):
         text = text.replace("/add_task", "").strip()
     
-    # Проверка totally все равно к регистру
     text_lower = text.lower()
     if "задание:" not in text_lower or "дедлайн:" not in text_lower:
         await update.message.reply_text(
@@ -260,42 +242,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # Парсим сообщение построчно (все равно к регистру)
-    task_desc = ""
-    deadline = ""
-    employee = ""
-    
-    for line in text.split('\n'):
-        line = line.strip()
-        line_lower = line.lower()
-        if line_lower.startswith("задание:"):
-            # Находим позицию ":" и берем текст после неё
-            idx = line.find(":") + 1
-            task_desc = line[idx:].strip()
-        elif line_lower.startswith("дедлайн:"):
-            idx = line.find(":") + 1
-            deadline = line[idx:].strip()
-        elif line_lower.startswith("сотрудник:"):
-            idx = line.find(":") + 1
-            employee = line[idx:].strip()
-    
-    # Ищем упоминания пользователей
-    if not employee and update.message.entities:
-        for entity in update.message.entities:
-            if entity.type == "mention":
-                employee = text[entity.offset:entity.offset + entity.length]
-                break
-            elif entity.type == "text_mention" and entity.user:
-                employee = f"@{entity.user.username}" if entity.user.username else f"{entity.user.first_name}"
-                break
-    
+    task_desc, deadline, employee = _parse_task_message(text, update.message.entities)
     employee = normalize_username(employee) if employee else "Не указан"
     
     if not task_desc or not deadline:
         await update.message.reply_text("Ошибка! Укажите задание и дедлайн.")
         return
     
-    # Парсим дату
     deadline_formatted = parse_date(deadline)
     if not deadline_formatted:
         await update.message.reply_text(
@@ -305,32 +258,25 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # Сохраняем задание
     created_at = datetime.now().strftime("%d.%m.%Y %H:%M")
     task_id = insert_task(task_desc, deadline_formatted, employee, created_at)
     
-    keyboard = get_main_menu_keyboard()
     await update.message.reply_text(
         f"Задание добавлено!\n\n"
         f"Задание: {task_desc}\n"
         f"Дедлайн: {deadline_formatted}\n"
         f"Сотрудник: {employee}",
-        reply_markup=keyboard
+        reply_markup=get_main_menu_keyboard()
     )
 
 async def show_list_filter(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показывает кнопки фильтрации заданий"""
     keyboard = get_list_filter_keyboard()
+    text = "Выберите категорию заданий:"
     if update.callback_query:
-        await update.callback_query.edit_message_text(
-            "Выберите категорию заданий:",
-            reply_markup=keyboard
-        )
+        await update.callback_query.edit_message_text(text, reply_markup=keyboard)
     elif update.message:
-        await update.message.reply_text(
-            "Выберите категорию заданий:",
-            reply_markup=keyboard
-        )
+        await update.message.reply_text(text, reply_markup=keyboard)
 
 def format_tasks_list(tasks, show_buttons=True):
     """Форматирует список заданий с кнопками управления"""
@@ -357,11 +303,11 @@ def format_tasks_list(tasks, show_buttons=True):
             task_buttons = []
             if not task["completed"]:
                 task_buttons.append(InlineKeyboardButton(
-                    f"✅ Выполнить", 
+                    "✅ Выполнить", 
                     callback_data=f"complete_{task['id']}"
                 ))
             task_buttons.append(InlineKeyboardButton(
-                f"🗑️ Удалить", 
+                "🗑️ Удалить", 
                 callback_data=f"delete_{task['id']}"
             ))
             keyboard_buttons.append(task_buttons)
@@ -388,7 +334,6 @@ async def complete_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         task_id = int(context.args[0])
         tasks = load_tasks()
-        
         task = next((t for t in tasks if t["id"] == task_id), None)
         if task:
             update_task(task_id, completed=True)
@@ -406,10 +351,18 @@ async def delete_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         task_id = int(context.args[0])
         delete_task_by_id(task_id)
-        keyboard = get_main_menu_keyboard()
-        await update.message.reply_text(f"Задание #{task_id} удалено!", reply_markup=keyboard)
+        await update.message.reply_text(f"Задание #{task_id} удалено!", reply_markup=get_main_menu_keyboard())
     except ValueError:
         await update.message.reply_text("ID должен быть числом!")
+
+def _handle_list_callback(query, filter_func, empty_message):
+    """Обработка callback для фильтрации списка заданий"""
+    tasks = filter_func(load_tasks())
+    message, keyboard = format_tasks_list(tasks)
+    if message:
+        return query.edit_message_text(message, reply_markup=keyboard)
+    else:
+        return query.edit_message_text(empty_message, reply_markup=get_list_filter_keyboard())
 
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик всех callback-запросов от кнопок"""
@@ -420,85 +373,30 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     data = query.data
     
-    # Главное меню
     if data == "main_menu":
-        keyboard = get_main_menu_keyboard()
-        await query.edit_message_text(
-            "Привет! Я бот для управления заданиями.\n\n"
-            "Выберите действие:",
-            reply_markup=keyboard
-        )
+        await query.edit_message_text(MAIN_MENU_TEXT, reply_markup=get_main_menu_keyboard())
     
-    # Помощь
     elif data == "help":
-        keyboard = get_main_menu_keyboard()
-        await query.edit_message_text(
-            "Привет! Я бот для управления заданиями.\n\n"
-            "Доступные команды:\n"
-            "/start или /menu - Главное меню\n"
-            "/add_task - Добавить новое задание\n"
-            "/list_tasks - Показать все задания\n\n"
-            "Выберите действие:",
-            reply_markup=keyboard
-        )
+        await query.edit_message_text(HELP_TEXT, reply_markup=get_main_menu_keyboard())
     
-    # Добавить задание
     elif data == "add_task":
         keyboard = InlineKeyboardMarkup([[
             InlineKeyboardButton("◀️ Главное меню", callback_data="main_menu")
         ]])
-        await query.edit_message_text(
-            "Чтобы добавить задание, отправьте сообщение в формате:\n\n"
-            "Задание: [описание задания]\n"
-            "Дедлайн: [дата: ДД.ММ.ГГГГ или ДД.ММ.ГГ]\n"
-            "Сотрудник: @username или имя\n\n"
-            "Пример:\n"
-            "Задание: Подготовить отчет\n"
-            "Дедлайн: 25.12.2024\n"
-            "Сотрудник: @ivan_petrov\n\n"
-            "Можно использовать короткий формат даты: 10.01.26\n"
-            "Можно упомянуть сотрудника через @username прямо в сообщении!",
-            reply_markup=keyboard
-        )
+        await query.edit_message_text(ADD_TASK_INSTRUCTIONS, reply_markup=keyboard)
     
-    # Список заданий - фильтрация
     elif data == "list_all":
-        tasks = load_tasks()
-        message, keyboard = format_tasks_list(tasks)
-        if message:
-            await query.edit_message_text(message, reply_markup=keyboard)
-        else:
-            keyboard = get_list_filter_keyboard()
-            await query.edit_message_text("Список заданий пуст.", reply_markup=keyboard)
+        await _handle_list_callback(query, lambda t: t, "Список заданий пуст.")
     
     elif data == "list_active":
-        tasks = [t for t in load_tasks() if not t["completed"]]
-        message, keyboard = format_tasks_list(tasks)
-        if message:
-            await query.edit_message_text(message, reply_markup=keyboard)
-        else:
-            keyboard = get_list_filter_keyboard()
-            await query.edit_message_text("Активных заданий нет.", reply_markup=keyboard)
+        await _handle_list_callback(query, lambda t: [x for x in t if not x["completed"]], "Активных заданий нет.")
     
     elif data == "list_done":
-        tasks = [t for t in load_tasks() if t["completed"]]
-        message, keyboard = format_tasks_list(tasks)
-        if message:
-            await query.edit_message_text(message, reply_markup=keyboard)
-        else:
-            keyboard = get_list_filter_keyboard()
-            await query.edit_message_text("Выполненных заданий нет.", reply_markup=keyboard)
+        await _handle_list_callback(query, lambda t: [x for x in t if x["completed"]], "Выполненных заданий нет.")
     
     elif data == "list_overdue":
-        tasks = [t for t in load_tasks() if is_overdue(t)]
-        message, keyboard = format_tasks_list(tasks)
-        if message:
-            await query.edit_message_text(message, reply_markup=keyboard)
-        else:
-            keyboard = get_list_filter_keyboard()
-            await query.edit_message_text("Просроченных заданий нет.", reply_markup=keyboard)
+        await _handle_list_callback(query, lambda t: [x for x in t if is_overdue(x)], "Просроченных заданий нет.")
     
-    # Выполнить задание
     elif data.startswith("complete_"):
         task_id = int(data.split("_")[1])
         tasks = load_tasks()
@@ -506,9 +404,6 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if task:
             update_task(task_id, completed=True)
             await query.answer(f"Задание #{task_id} отмечено как выполненное!")
-            
-            # Обновляем список заданий
-            current_filter = "list_all"  # Можно улучшить, сохраняя последний фильтр
             tasks = load_tasks()
             message, keyboard = format_tasks_list(tasks)
             if message:
@@ -516,23 +411,18 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await query.answer("Задание не найдено!")
     
-    # Удалить задание
     elif data.startswith("delete_"):
         task_id = int(data.split("_")[1])
         delete_task_by_id(task_id)
         await query.answer(f"Задание #{task_id} удалено!")
-        
-        # Обновляем список заданий
         tasks = load_tasks()
         message, keyboard = format_tasks_list(tasks)
         if message:
             await query.edit_message_text(message, reply_markup=keyboard)
         else:
-            keyboard = get_list_filter_keyboard()
-            await query.edit_message_text("Список заданий пуст.", reply_markup=keyboard)
+            await query.edit_message_text("Список заданий пуст.", reply_markup=get_list_filter_keyboard())
 
 def main():
-    # Инициализируем базу данных при запуске
     init_db()
     
     BOT_TOKEN = os.getenv("BOT_TOKEN")

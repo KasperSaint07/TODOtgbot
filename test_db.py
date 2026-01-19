@@ -16,7 +16,7 @@ from main import (
     init_db, load_tasks, insert_task, update_task, 
     delete_task_by_id, DB_FILE
 )
-
+    
 def test_database():
     """Тестирует все функции базы данных"""
     print("=" * 50)
