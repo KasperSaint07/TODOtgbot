@@ -1,4 +1,4 @@
-import json
+import sqlite3
 import os
 from datetime import datetime
 from dotenv import load_dotenv
@@ -7,23 +7,129 @@ from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQu
 
 load_dotenv()
 
-TASKS_FILE = "tasks.json"
+DB_FILE = "tasks.db"
+
+def init_db():
+    """Создает таблицу tasks, если она не существует"""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task TEXT NOT NULL,
+            deadline TEXT NOT NULL,
+            employee TEXT NOT NULL,
+            completed INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        )
+    """)
+    conn.commit()
+    conn.close()
 
 def load_tasks():
-    if os.path.exists(TASKS_FILE):
-        with open(TASKS_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    return []
+    """Загружает все задания из базы данных"""
+    init_db()  # Убеждаемся, что таблица существует
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, task, deadline, employee, completed, created_at FROM tasks")
+    rows = cursor.fetchall()
+    conn.close()
+    
+    tasks = []
+    for row in rows:
+        tasks.append({
+            "id": row[0],
+            "task": row[1],
+            "deadline": row[2],
+            "employee": row[3],
+            "completed": bool(row[4]),  # Конвертируем INTEGER в bool
+            "created_at": row[5]
+        })
+    return tasks
+
+def insert_task(task, deadline, employee, created_at):
+    """Добавляет новое задание в базу данных"""
+    init_db()
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO tasks (task, deadline, employee, completed, created_at)
+        VALUES (?, ?, ?, ?, ?)
+    """, (task, deadline, employee, 0, created_at))
+    task_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return task_id
+
+def update_task(task_id, completed=None, task=None, deadline=None, employee=None):
+    """Обновляет задание в базе данных"""
+    init_db()
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    updates = []
+    params = []
+    
+    if completed is not None:
+        updates.append("completed = ?")
+        params.append(1 if completed else 0)
+    if task is not None:
+        updates.append("task = ?")
+        params.append(task)
+    if deadline is not None:
+        updates.append("deadline = ?")
+        params.append(deadline)
+    if employee is not None:
+        updates.append("employee = ?")
+        params.append(employee)
+    
+    if updates:
+        params.append(task_id)
+        query = f"UPDATE tasks SET {', '.join(updates)} WHERE id = ?"
+        cursor.execute(query, params)
+        conn.commit()
+    
+    conn.close()
+
+def delete_task_by_id(task_id):
+    """Удаляет задание из базы данных по ID"""
+    init_db()
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+    conn.commit()
+    conn.close()
 
 def save_tasks(tasks):
-    with open(TASKS_FILE, 'w', encoding='utf-8') as f:
-        json.dump(tasks, f, ensure_ascii=False, indent=2)
+    """Совместимость: сохраняет список заданий (используется для полной перезаписи)"""
+    init_db()
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    # Удаляем все существующие задачи
+    cursor.execute("DELETE FROM tasks")
+    
+    # Вставляем новые задачи
+    for task in tasks:
+        cursor.execute("""
+            INSERT INTO tasks (id, task, deadline, employee, completed, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            task["id"],
+            task["task"],
+            task["deadline"],
+            task["employee"],
+            1 if task["completed"] else 0,
+            task["created_at"]
+        ))
+    
+    conn.commit()
+    conn.close()
 
 def normalize_username(username):
     """Нормализует username - добавляет @ если нужно"""
     if not username or username == "Не указан" or username.startswith("@"):
         return username
-    # Если это похоже на username (только буквы, цифры, _)
     if username.replace("_", "").replace("-", "").isalnum():
         return f"@{username}"
     return username
@@ -144,7 +250,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text.startswith("/add_task"):
         text = text.replace("/add_task", "").strip()
     
-    # Проверка нечувствительна к регистру
+    # Проверка totally все равно к регистру
     text_lower = text.lower()
     if "задание:" not in text_lower or "дедлайн:" not in text_lower:
         await update.message.reply_text(
@@ -154,7 +260,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # Парсим сообщение построчно (нечувствительно к регистру)
+    # Парсим сообщение построчно (все равно к регистру)
     task_desc = ""
     deadline = ""
     employee = ""
@@ -200,17 +306,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     # Сохраняем задание
-    tasks = load_tasks()
-    new_task = {
-        "id": len(tasks) + 1,
-        "task": task_desc,
-        "deadline": deadline_formatted,
-        "employee": employee,
-        "completed": False,
-        "created_at": datetime.now().strftime("%d.%m.%Y %H:%M")
-    }
-    tasks.append(new_task)
-    save_tasks(tasks)
+    created_at = datetime.now().strftime("%d.%m.%Y %H:%M")
+    task_id = insert_task(task_desc, deadline_formatted, employee, created_at)
     
     keyboard = get_main_menu_keyboard()
     await update.message.reply_text(
@@ -294,8 +391,7 @@ async def complete_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         task = next((t for t in tasks if t["id"] == task_id), None)
         if task:
-            task["completed"] = True
-            save_tasks(tasks)
+            update_task(task_id, completed=True)
             await update.message.reply_text(f"Задание #{task_id} отмечено как выполненное!")
         else:
             await update.message.reply_text(f"Задание с ID {task_id} не найдено.")
@@ -309,8 +405,7 @@ async def delete_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         task_id = int(context.args[0])
-        tasks = [t for t in load_tasks() if t["id"] != task_id]
-        save_tasks(tasks)
+        delete_task_by_id(task_id)
         keyboard = get_main_menu_keyboard()
         await update.message.reply_text(f"Задание #{task_id} удалено!", reply_markup=keyboard)
     except ValueError:
@@ -409,8 +504,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         tasks = load_tasks()
         task = next((t for t in tasks if t["id"] == task_id), None)
         if task:
-            task["completed"] = True
-            save_tasks(tasks)
+            update_task(task_id, completed=True)
             await query.answer(f"Задание #{task_id} отмечено как выполненное!")
             
             # Обновляем список заданий
@@ -425,8 +519,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Удалить задание
     elif data.startswith("delete_"):
         task_id = int(data.split("_")[1])
-        tasks = [t for t in load_tasks() if t["id"] != task_id]
-        save_tasks(tasks)
+        delete_task_by_id(task_id)
         await query.answer(f"Задание #{task_id} удалено!")
         
         # Обновляем список заданий
@@ -439,6 +532,9 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text("Список заданий пуст.", reply_markup=keyboard)
 
 def main():
+    # Инициализируем базу данных при запуске
+    init_db()
+    
     BOT_TOKEN = os.getenv("BOT_TOKEN")
     if not BOT_TOKEN:
         print("Ошибка! Токен бота не найден.")
