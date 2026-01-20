@@ -49,6 +49,7 @@ def init_db():
     conn.commit()
     conn.close()
 
+
 def _execute_db(query, params=None, fetch=False):
     """Вспомогательная функция для выполнения запросов к БД"""
     conn = sqlite3.connect(DB_FILE)
@@ -61,6 +62,8 @@ def _execute_db(query, params=None, fetch=False):
     conn.commit()
     conn.close()
     return result
+
+
 
 def load_tasks():
     """Загружает все задания из базы данных"""
@@ -433,7 +436,7 @@ def main():
         return
     
     application = Application.builder().token(BOT_TOKEN).build()
-    
+        
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("menu", start))
     application.add_handler(CommandHandler("help", help_command))
@@ -445,7 +448,7 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     print("Бот запущен и готов к работе!")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    application.run_pollinxg(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     main()
