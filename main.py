@@ -33,7 +33,7 @@ ADD_TASK_INSTRUCTIONS = (
 )
 
 def init_db():
-    """Создает таблицу tasks, если она не существует"""
+    # Создает таблицу tasks, если она не существует
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute("""
@@ -51,7 +51,7 @@ def init_db():
 
 
 def _execute_db(query, params=None, fetch=False):
-    """Вспомогательная функция для выполнения запросов к БД"""
+    # Вспомогательная функция для выполнения запросов к БД
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     if params:
@@ -66,7 +66,7 @@ def _execute_db(query, params=None, fetch=False):
 
 
 def load_tasks():
-    """Загружает все задания из базы данных"""
+    # Загружает все задания из базы данных
     rows = _execute_db("SELECT id, task, deadline, employee, completed, created_at FROM tasks", fetch=True)
     return [{
         "id": row[0],
@@ -78,7 +78,7 @@ def load_tasks():
     } for row in rows]
 
 def insert_task(task, deadline, employee, created_at):
-    """Добавляет новое задание в базу данных"""
+    # Добавляет новое задание в базу данных
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute("""
@@ -91,7 +91,7 @@ def insert_task(task, deadline, employee, created_at):
     return task_id
 
 def update_task(task_id, completed=None, task=None, deadline=None, employee=None):
-    """Обновляет задание в базе данных"""
+    # Обновляет задание в базе данных
     updates = []
     params = []
     
@@ -114,11 +114,11 @@ def update_task(task_id, completed=None, task=None, deadline=None, employee=None
         _execute_db(query, params)
 
 def delete_task_by_id(task_id):
-    """Удаляет задание из базы данных по ID"""
+    # Удаляет задание из базы данных по ID
     _execute_db("DELETE FROM tasks WHERE id = ?", (task_id,))
 
 def normalize_username(username):
-    """Нормализует username - добавляет @ если нужно"""
+    # Нормализует username - добавляет @ если нужно
     if not username or username == "Не указан" or username.startswith("@"):
         return username
     if username.replace("_", "").replace("-", "").isalnum():
@@ -126,7 +126,7 @@ def normalize_username(username):
     return username
 
 def parse_date(date_str):
-    """Парсит дату в формате ДД.ММ.ГГГГ или ДД.ММ.ГГ"""
+    # Парсит дату в формате ДД.ММ.ГГГГ или ДД.ММ.ГГ
     for fmt in DATE_FORMATS:
         try:
             dt = datetime.strptime(date_str, fmt)
@@ -136,7 +136,7 @@ def parse_date(date_str):
     return None
 
 def deadline_to_datetime(deadline_str):
-    """Конвертирует строку дедлайна в datetime для сортировки"""
+    # Конвертирует строку дедлайна в datetime для сортировки
     for fmt in DATE_FORMATS:
         try:
             return datetime.strptime(deadline_str, fmt)
@@ -145,14 +145,14 @@ def deadline_to_datetime(deadline_str):
     return datetime.max
 
 def is_overdue(task):
-    """Проверяет, просрочено ли задание"""
+    # Проверяет, просрочено ли задание
     if task["completed"]:
         return False
     deadline_date = deadline_to_datetime(task["deadline"])
     return deadline_date.date() < datetime.now().date()
 
 def get_task_status(task):
-    """Возвращает статус задания с эмодзи"""
+    # Возвращает статус задания с эмодзи
     if task["completed"]:
         return "✅ Completed"
     elif is_overdue(task):
@@ -161,7 +161,7 @@ def get_task_status(task):
         return "🟢 In progress"
 
 def get_main_menu_keyboard():
-    """Создает клавиатуру главного меню"""
+    # Создает клавиатуру главного меню
     keyboard = [
         [InlineKeyboardButton("➕ Добавить задание", callback_data="add_task")],
         [InlineKeyboardButton("📋 Все задания", callback_data="list_all")],
@@ -173,7 +173,7 @@ def get_main_menu_keyboard():
     return InlineKeyboardMarkup(keyboard)
 
 def get_list_filter_keyboard():
-    """Создает клавиатуру для фильтрации заданий"""
+    # Создает клавиатуру для фильтрации заданий
     keyboard = [
         [InlineKeyboardButton("📋 Все задания", callback_data="list_all")],
         [InlineKeyboardButton("🟢 Активные", callback_data="list_active")],
@@ -202,7 +202,7 @@ async def add_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(ADD_TASK_INSTRUCTIONS)
 
 def _parse_task_message(text, entities):
-    """Парсит сообщение с заданием и возвращает task_desc, deadline, employee"""
+    # Парсит сообщение с заданием и возвращает task_desc, deadline, employee
     task_desc = ""
     deadline = ""
     employee = ""
@@ -273,7 +273,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def show_list_filter(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показывает кнопки фильтрации заданий"""
+    # Показывает кнопки фильтрации заданий
     keyboard = get_list_filter_keyboard()
     text = "Выберите категорию заданий:"
     if update.callback_query:
@@ -282,7 +282,7 @@ async def show_list_filter(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(text, reply_markup=keyboard)
 
 def format_tasks_list(tasks, show_buttons=True):
-    """Форматирует список заданий с кнопками управления"""
+    # Форматирует список заданий с кнопками управления
     if not tasks:
         return None, None
     
@@ -324,7 +324,7 @@ def format_tasks_list(tasks, show_buttons=True):
     return message, keyboard
 
 async def list_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Команда /list_tasks - показывает кнопки фильтра"""
+    # Команда /list_tasks - показывает кнопки фильтра
     if not update.message:
         return
     await show_list_filter(update, context)
@@ -359,7 +359,7 @@ async def delete_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("ID должен быть числом!")
 
 def _handle_list_callback(query, filter_func, empty_message):
-    """Обработка callback для фильтрации списка заданий"""
+    # Обработка callback для фильтрации списка заданий
     tasks = filter_func(load_tasks())
     message, keyboard = format_tasks_list(tasks)
     if message:
@@ -368,7 +368,7 @@ def _handle_list_callback(query, filter_func, empty_message):
         return query.edit_message_text(empty_message, reply_markup=get_list_filter_keyboard())
 
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик всех callback-запросов от кнопок"""
+    # Обработчик всех callback-запросов от кнопок
     query = update.callback_query
     if not query:
         return
