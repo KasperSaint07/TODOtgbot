@@ -1,7 +1,7 @@
 from telegram import Update
 from telegram.ext import ContextTypes
-from config import MAIN_MENU_TEXT, HELP_TEXT, ADD_TASK_INSTRUCTIONS, ADD_LATE_INSTRUCTIONS
-from keyboards import get_main_menu_keyboard, get_back_menu_keyboard
+from core.config import MAIN_MENU_TEXT, HELP_TEXT, ADD_TASK_INSTRUCTIONS, ADD_LATE_INSTRUCTIONS
+from ui.keyboards import get_main_menu_keyboard, get_back_menu_keyboard
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message:
@@ -28,7 +28,7 @@ async def list_tasks_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await show_list_filter(update, context)
 
 async def complete_task_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    from database import load_tasks, update_task
+    from core.database import load_tasks, update_task
     if not update.message or not context.args:
         await update.message.reply_text("Укажите ID задания.\nПример: /complete_task 1")
         return
@@ -46,8 +46,8 @@ async def complete_task_command(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text("ID должен быть числом!")
 
 async def delete_task_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    from database import delete_task_by_id
-    from keyboards import get_main_menu_keyboard
+    from core.database import delete_task_by_id
+    from ui.keyboards import get_main_menu_keyboard
     if not update.message or not context.args:
         await update.message.reply_text("Укажите ID задания.\nПример: /delete_task 1")
         return

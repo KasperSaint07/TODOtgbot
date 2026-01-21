@@ -1,7 +1,7 @@
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters
-from config import BOT_TOKEN
-from database import init_db
+from core.config import BOT_TOKEN
+from core.database import init_db
 from handlers.commands import (
     start, help_command, add_task_command, list_tasks_command,
     complete_task_command, delete_task_command

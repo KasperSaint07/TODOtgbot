@@ -1,6 +1,6 @@
 import sqlite3
 from datetime import datetime
-from config import DB_FILE
+from core.config import DB_FILE
 
 def init_db():
     # Создает таблицы в БД

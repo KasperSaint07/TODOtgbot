@@ -1,10 +1,10 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 from datetime import datetime
-from database import insert_task, insert_late_employee
-from utils import parse_task_message, parse_late_message, normalize_username, parse_date
-from keyboards import get_main_menu_keyboard
-from config import ADD_TASK_INSTRUCTIONS
+from core.database import insert_task, insert_late_employee
+from core.utils import parse_task_message, parse_late_message, normalize_username, parse_date
+from ui.keyboards import get_main_menu_keyboard
+from core.config import ADD_TASK_INSTRUCTIONS
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:

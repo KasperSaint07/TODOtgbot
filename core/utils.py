@@ -1,5 +1,5 @@
 from datetime import datetime
-from config import DATE_FORMATS
+from core.config import DATE_FORMATS
 
 def normalize_username(username):
     # Нормализует username - добавляет @ если нужно
@@ -130,7 +130,7 @@ def format_tasks_list(tasks, show_buttons=True):
     
     if show_buttons:
         keyboard_buttons.append([("◀️ Главное меню", "main_menu")])
-        from keyboards import create_keyboard
+        from ui.keyboards import create_keyboard
         keyboard = create_keyboard(keyboard_buttons)
     else:
         keyboard = None

@@ -1,10 +1,10 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 from datetime import datetime
-from config import MAIN_MENU_TEXT, HELP_TEXT, ADD_TASK_INSTRUCTIONS
-from database import load_tasks, update_task, delete_task_by_id, load_late_employees
-from utils import format_tasks_list, is_overdue
-from keyboards import get_main_menu_keyboard, get_list_filter_keyboard, get_back_menu_keyboard
+from core.config import MAIN_MENU_TEXT, HELP_TEXT, ADD_TASK_INSTRUCTIONS
+from core.database import load_tasks, update_task, delete_task_by_id, load_late_employees
+from core.utils import format_tasks_list, is_overdue
+from ui.keyboards import get_main_menu_keyboard, get_list_filter_keyboard, get_back_menu_keyboard
 from handlers.commands import add_late_employee
 
 async def show_list_filter(update: Update, context: ContextTypes.DEFAULT_TYPE):
