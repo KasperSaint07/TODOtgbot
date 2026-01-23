@@ -2,7 +2,6 @@ from datetime import datetime
 from core.config import DATE_FORMATS
 
 def normalize_username(username):
-    # Нормализует username - добавляет @ если нужно
     if not username or username == "Не указан" or username.startswith("@"):
         return username
     if username.replace("_", "").replace("-", "").isalnum():
@@ -10,7 +9,6 @@ def normalize_username(username):
     return username
 
 def parse_date(date_str):
-    # Парсит дату в формате ДД.ММ.ГГГГ или ДД.ММ.ГГ
     for fmt in DATE_FORMATS:
         try:
             dt = datetime.strptime(date_str, fmt)
@@ -20,7 +18,6 @@ def parse_date(date_str):
     return None
 
 def deadline_to_datetime(deadline_str):
-    # Конвертирует строку дедлайна в datetime для сортировки
     for fmt in DATE_FORMATS:
         try:
             return datetime.strptime(deadline_str, fmt)
@@ -29,14 +26,12 @@ def deadline_to_datetime(deadline_str):
     return datetime.max
 
 def is_overdue(task):
-    # Проверяет, просрочено ли задание
     if task["completed"]:
         return False
     deadline_date = deadline_to_datetime(task["deadline"])
     return deadline_date.date() < datetime.now().date()
 
 def get_task_status(task):
-    # Возвращает статус задания с эмодзи
     if task["completed"]:
         return "✅ Completed"
     elif is_overdue(task):
@@ -45,7 +40,6 @@ def get_task_status(task):
         return "🟢 In progress"
 
 def parse_task_message(text, entities):
-    # Парсит сообщение с заданием
     task_desc = ""
     deadline = ""
     employee = ""
@@ -101,7 +95,6 @@ def parse_late_message(text, entities):
     return employee, employee_name, late_time, date
 
 def format_tasks_list(tasks, show_buttons=True):
-    # Форматирует список заданий
     if not tasks:
         return None, None
     
@@ -136,3 +129,6 @@ def format_tasks_list(tasks, show_buttons=True):
         keyboard = None
     
     return message, keyboard
+
+
+

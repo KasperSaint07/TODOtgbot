@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: tg-postgres
+    restart: always
+
+    environment:
+      POSTGRES_DB: tg_db
+      POSTGRES_USER: tg_user
+      POSTGRES_PASSWORD: tg_pass
+
+    ports:
+      - "5432:5432"
+
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
