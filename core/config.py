@@ -4,8 +4,16 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Настройки БД
-DB_FILE = "tasks.db"
+DB_FILE = "tasks.db"  # Для обратной совместимости, если используется SQLite
 DATE_FORMATS = ["%d.%m.%Y", "%d.%m.%y"]
+
+# PostgreSQL настройки
+DB_HOST = os.getenv("DB_HOST", "localhost")
+DB_PORT = os.getenv("DB_PORT", "5432")
+DB_NAME = os.getenv("DB_NAME", "tg_db")
+DB_USER = os.getenv("DB_USER", "tg_user")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "tg_pass")
+USE_POSTGRES = os.getenv("USE_POSTGRES", "true").lower() == "true"
 
 # Токен бота
 BOT_TOKEN = os.getenv("BOT_TOKEN")
